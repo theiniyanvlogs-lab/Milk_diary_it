@@ -65,20 +65,15 @@ button{border:none;border-radius:6px}
 
  <div style="padding:15px">
   <button class="blue" onclick="openAdmin()">Admin Settings</button>
-
   <input id="notQty" placeholder="Not Supplied Qty">
   <button class="red" onclick="saveNot()">Save / Update Not Supplied</button>
-
   <input id="extraQty" placeholder="Extra Milk Qty">
   <button class="green" onclick="saveExtra()">Save / Update Extra Milk</button>
-
   <hr>
-
   <b>Customer Period Bill</b>
   <input id="fromDate" readonly onclick="setMode('from')" placeholder="From Date">
   <input id="toDate" readonly onclick="setMode('to')" placeholder="To Date">
   <button class="blue" onclick="viewPeriodBill()">Preview Period Bill</button>
-
   <hr>
   <button class="blue" onclick="viewMonthBill()">View Final Bill (This Month)</button>
  </div>
@@ -119,41 +114,39 @@ if(!DEVICE_ID){
 /* REGISTRY */
 const REGISTRY_URL = "registry.json";
 
-/* UNLOCK SYSTEM */
+/* FINAL UNLOCK SYSTEM */
 async function unlockApp(){
- let pwd = unlockPwd.value.trim();
- if(!pwd) return alert("Enter password");
+  let pwd = unlockPwd.value.trim();
+  if(!pwd) return alert("Enter password");
 
- // Already unlocked on this phone — but still verify registry
-if(localStorage.MDT_UNLOCKED === pwd){
-   let registry = await fetch(REGISTRY_URL + "?t=" + Date.now()).then(r=>r.json());
-   
-   // If registry still allows this password → open
-   if(registry[pwd] && registry[pwd].used === false){
-       startApp("Active");
-       return;
-   }
-   
-   // If registry says password is used → clear local bypass
-   localStorage.removeItem("MDT_UNLOCKED");
-}
+  let registry = await fetch(REGISTRY_URL + "?t=" + Date.now()).then(r=>r.json());
 
- // Load registry
- let registry = await fetch(REGISTRY_URL + "?t=" + Date.now()).then(r=>r.json());
+  // Auto-open if already bound on same phone
+  if(localStorage.MDT_UNLOCKED === pwd){
+      if(registry[pwd] && registry[pwd].device === DEVICE_ID){
+          startApp("Active");
+          return;
+      } else {
+          localStorage.removeItem("MDT_UNLOCKED");
+      }
+  }
 
- // Invalid password
- if(!registry[pwd]) return alert("Invalid Password");
+  if(!registry[pwd]) return alert("Invalid Password");
 
- // Block if marked used on another device
- if(registry[pwd].used && registry[pwd].device !== DEVICE_ID){
-   alert("Password already used on another phone");
-   return;
- }
+  if(registry[pwd].used && registry[pwd].device !== DEVICE_ID){
+      alert("Password already used on another phone");
+      return;
+  }
 
- // Store local unlock
- localStorage.MDT_UNLOCKED = pwd;
+  // First successful unlock
+  localStorage.MDT_UNLOCKED = pwd;
 
- startApp("Active");
+  alert(
+    "Unlock Successful!\n\nYour Device ID:\n" + DEVICE_ID +
+    "\n\nSend this Device ID to Admin for activation."
+  );
+
+  startApp("Active");
 }
 
 /* START APP */
@@ -164,14 +157,12 @@ function startApp(status){
  renderCalendar();
 }
 
-/* DATA */
+/* DATA AND CALENDAR */
 let data=JSON.parse(localStorage.MILK_DATA||"{}");
 let current=new Date(),selectedDate=null,mode=null,from=null,to=null;
-
 function key(d){return d.toISOString().slice(0,10);}
 function fmt(d){return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear();}
 
-/* CALENDAR */
 function renderCalendar(){
  monthTitle.innerText=current.toLocaleString("default",{month:"long",year:"numeric"});
  calendar.innerHTML="";
@@ -191,6 +182,7 @@ function renderCalendar(){
   calendar.appendChild(el);
  }
 }
+
 function changeMonth(v){current.setMonth(current.getMonth()+v);renderCalendar();}
 function setMode(m){mode=m;}
 
@@ -205,23 +197,8 @@ function selectDate(d,el){
  if(mode==="to"){to=d;toDate.value=fmt(d)}
 }
 
-/* SAVE */
-function saveNot(){
- if(!selectedDate)return;
- let k=key(selectedDate);
- data[k]=data[k]||{};
- data[k].not=parseInt(notQty.value)||0;
- localStorage.MILK_DATA=JSON.stringify(data);
- renderCalendar();
-}
-function saveExtra(){
- if(!selectedDate)return;
- let k=key(selectedDate);
- data[k]=data[k]||{};
- data[k].extra=parseInt(extraQty.value)||0;
- localStorage.MILK_DATA=JSON.stringify(data);
- renderCalendar();
-}
+function saveNot(){if(!selectedDate)return;let k=key(selectedDate);data[k]=data[k]||{};data[k].not=parseInt(notQty.value)||0;localStorage.MILK_DATA=JSON.stringify(data);renderCalendar();}
+function saveExtra(){if(!selectedDate)return;let k=key(selectedDate);data[k]=data[k]||{};data[k].extra=parseInt(extraQty.value)||0;localStorage.MILK_DATA=JSON.stringify(data);renderCalendar();}
 
 /* ADMIN */
 function openAdmin(){
@@ -244,15 +221,8 @@ function saveAdmin(){
 }
 
 /* BILL */
-function viewMonthBill(){
- let s=new Date(current.getFullYear(),current.getMonth(),1);
- let e=new Date(current.getFullYear(),current.getMonth()+1,0);
- buildBill(s,e);
-}
-function viewPeriodBill(){
- if(!from||!to)return alert("Select dates");
- buildBill(from,to);
-}
+function viewMonthBill(){let s=new Date(current.getFullYear(),current.getMonth(),1);let e=new Date(current.getFullYear(),current.getMonth()+1,0);buildBill(s,e);}
+function viewPeriodBill(){if(!from||!to)return alert("Select dates");buildBill(from,to);}
 
 function buildBill(s,e){
  let daily=+localStorage.dailyQty||0;
@@ -260,24 +230,14 @@ function buildBill(s,e){
  let service=+localStorage.service||0;
  let days=Math.floor((e-s)/86400000)+1;
  let base=daily*days;
-
- let extra=0,not=0;
- let extraLines="",notLines="";
-
+ let extra=0,not=0,extraLines="",notLines="";
  for(let k in data){
   let d=new Date(k);
   if(d>=s && d<=e){
-   if(data[k].extra){
-    extra+=data[k].extra;
-    extraLines+=fmt(d)+" : "+data[k].extra+" pkt\n";
-   }
-   if(data[k].not){
-    not+=data[k].not;
-    notLines+=fmt(d)+" : "+data[k].not+" pkt\n";
-   }
+   if(data[k].extra){extra+=data[k].extra;extraLines+=fmt(d)+" : "+data[k].extra+" pkt\n";}
+   if(data[k].not){not+=data[k].not;notLines+=fmt(d)+" : "+data[k].not+" pkt\n";}
   }
  }
-
  let finalMilk=base+extra-not;
  let milkAmt=finalMilk*rate;
  let total=milkAmt+service;
@@ -300,12 +260,11 @@ Daily Milk:
 ${daily} pkt × ${days} days = ${base} pkt
 
 Extra Milk:
-${extraLines || "Nil"}
+${extraLines||"Nil"}
 Total Extra: ${extra} pkt
 
 Not Supplied:
-${notLines || "Nil"}
-
+${notLines||"Nil"}
 Total Not Supplied: ${not} pkt
 
 --------------------------------
